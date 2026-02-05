@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>WiFi</title>
+  <link rel="stylesheet" href="/static/app.css">
+
+  <style>
+    .topnav{display:flex;gap:10px;justify-content:space-between;margin-bottom:12px}
+    .navlinks{display:flex;gap:10px;flex-wrap:wrap}
+    .navlink{padding:10px 14px;border-radius:999px;font-weight:900;text-decoration:none;background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25)}
+    .navlink.active{background:rgba(255,255,255,.25)}
+
+    .kv{display:grid;grid-template-columns:160px 1fr;gap:10px;padding:8px 0;border-bottom:1px dashed rgba(0,0,0,.15)}
+    .k{font-weight:900}
+    .v{font-weight:800;word-break:break-word}
+    .msg{margin-top:12px;padding:10px 12px;border-radius:14px;font-weight:900;background:rgba(255,255,255,.55)}
+    .msg.err{background:rgba(255,0,0,.10)}
+  </style>
+</head>
+
+<body class="bg">
+<div class="wrap">
+
+  <div class="topnav">
+    <div class="navlinks">
+      <a class="navlink" href="/">Home</a>
+      <a class="navlink active" href="/wifi">WiFi</a>
+      <a class="navlink" href="/vehicle">Vehicle</a>
+      <a class="navlink" href="/power">Power</a>
+      <a class="navlink" href="/settings">Settings</a>
+    </div>
+  </div>
+
+  <section class="hero">
+    <h1>WiFi</h1>
+    <p>Status, saved networks and scan results.</p>
+
+    <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+      <span class="pill"><span id="statusText">Ready</span></span>
+      <button id="refreshBtn" class="btn btn-primary">Refresh</button>
+      <button id="scanBtn" class="btn btn-ghost">Scan</button>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="card">
+      <div class="card-h"><h2>Status</h2></div>
+      <div class="card-b">
+        <div id="statusArea"></div>
+        <div id="msgWrap"></div>
+      </div>
+    </div>
+
+    <div style="height:14px"></div>
+
+    <div class="card">
+      <div class="card-h"><h2>Saved networks</h2></div>
+      <div class="card-b">
+        <div id="savedArea"></div>
+      </div>
+    </div>
+
+    <div style="height:14px"></div>
+
+    <div class="card">
+      <div class="card-h"><h2>Scan results</h2></div>
+      <div class="card-b">
+        <div id="scanArea"></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => (s ?? "").toString().replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m]));
+function kv(k,v){return `<div class="kv"><div class="k">${esc(k)}</div><div class="v">${esc(v ?? "—")}</div></div>`}
+function setMsg(text, kind){
+  const wrap = $("msgWrap");
+  if (!text) { wrap.innerHTML = ""; return; }
+  const cls = kind === "err" ? "msg err" : "msg";
+  wrap.innerHTML = `<div class="${cls}">${esc(text)}</div>`;
+}
+async function readJsonOrThrow(res){
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
+  if (ct.includes("application/json")){
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.detail || ("HTTP " + res.status));
+    return j;
+  }
+  const t = await res.text();
+  throw new Error(t || ("HTTP " + res.status));
+}
+async function api(url, opts){
+  const res = await fetch(url, opts);
+  return readJsonOrThrow(res);
+}
+
+async function refreshStatus(){
+  $("statusText").textContent = "Refreshing…";
+  setMsg("", null);
+  try{
+    const s = await api("/api/status");
+    let html = "";
+    html += kv("Connected", s.connected ? "Yes" : "No");
+    html += kv("SSID", s.ssid || "—");
+    html += kv("IP", s.ip || "—");
+    html += kv("WPA state", s.wpa_state || "—");
+    $("statusArea").innerHTML = html;
+    $("statusText").textContent = "Ready";
+  }catch(e){
+    $("statusText").textContent = "Error";
+    setMsg(e.message || String(e), "err");
+  }
+}
+
+async function refreshSaved(){
+  try{
+    const s = await api("/api/saved_networks");
+    const nets = s.networks || [];
+    if (!nets.length){
+      $("savedArea").innerHTML = "<div class='meta'>No saved networks</div>";
+      return;
+    }
+    let html = "";
+    for (const n of nets){
+      html += kv(n.ssid || "—", "id " + (n.id ?? "—"));
+    }
+    $("savedArea").innerHTML = html;
+  }catch{
+    $("savedArea").innerHTML = "<div class='meta'>Unable to read saved networks</div>";
+  }
+}
+
+async function scan(){
+  $("statusText").textContent = "Scanning…";
+  setMsg("", null);
+  try{
+    const r = await api("/api/scan", { method: "POST" });
+    const aps = r.aps || [];
+    if (!aps.length){
+      $("scanArea").innerHTML = "<div class='meta'>No access points found</div>";
+      $("statusText").textContent = "Ready";
+      return;
+    }
+    let html = "";
+    for (const ap of aps){
+      html += kv(ap.ssid || "(hidden)", `sig ${ap.sig} • ${ap.flags || ""}`.trim());
+    }
+    $("scanArea").innerHTML = html;
+    $("statusText").textContent = "Ready";
+  }catch(e){
+    $("statusText").textContent = "Error";
+    setMsg(e.message || String(e), "err");
+  }
+}
+
+$("refreshBtn").addEventListener("click", async ()=>{ await refreshStatus(); await refreshSaved(); });
+$("scanBtn").addEventListener("click", scan);
+
+(async () => {
+  await refreshStatus();
+  await refreshSaved();
+})();
+</script>
+</body>
+</html>

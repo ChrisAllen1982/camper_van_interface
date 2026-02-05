@@ -1,0 +1,6 @@
+{
+  "vin": "WV1ZZZ7HZPH014722",
+  "victron_base_url": "http://127.0.0.1:8000",
+  "victron_api_key": "CHANGE_ME",
+  "victron_device_name": "SmartSolar"
+}

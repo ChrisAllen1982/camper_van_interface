@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AllenNet CamperHub</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <style>
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+    @media(max-width:980px){.grid{grid-template-columns:1fr}}
+    .tile{padding:16px;border-radius:22px;background:rgba(255,255,255,.82);border:1px solid rgba(26,15,16,.12);box-shadow:0 12px 30px rgba(0,0,0,.18)}
+    .tile h3{margin:0 0 6px;font-size:18px}
+    .tile p{margin:0 0 12px;color:rgba(26,15,16,.72);font-weight:700}
+    .tile .row{display:flex;gap:10px;flex-wrap:wrap}
+  </style>
+</head>
+<body class="bg">
+  <div class="wrap">
+    <section class="hero">
+      <h1>AllenNet CamperHub</h1>
+      <p>Configure Wi-Fi for the Pi and view your VW vehicle and power data.</p>
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+        <a class="btn btn-primary" href="/wifi">Wi-Fi</a>
+        <a class="btn btn-ghost" href="/vehicle">Vehicle</a>
+        <a class="btn btn-ghost" href="/power">Power</a>
+        <a class="btn btn-ghost" href="/settings">Settings</a>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="tile">
+        <h3>Wi-Fi</h3>
+        <p>Scan and connect the Pi (wlan0) while keeping your RaspAP hotspot (wlan1) running.</p>
+        <div class="row">
+          <a class="btn btn-primary" href="/wifi">Open Wi-Fi</a>
+        </div>
+      </div>
+
+      <div class="tile">
+        <h3>Vehicle</h3>
+        <p>Shows summary, drive level and total range, plus location map and address fields.</p>
+        <div class="row">
+          <a class="btn btn-primary" href="/vehicle">Open Vehicle</a>
+        </div>
+      </div>
+
+      <div class="tile">
+        <h3>Power</h3>
+        <p>Shows Victron SmartSolar charging stage, voltage, current and solar power.</p>
+        <div class="row">
+          <a class="btn btn-primary" href="/power">Open Power</a>
+        </div>
+      </div>
+
+      <div class="tile">
+        <h3>Settings</h3>
+        <p>Select the VIN once, save it on the Pi, and preload/cache vehicle data for fast loads.</p>
+        <div class="row">
+          <a class="btn btn-primary" href="/settings">Open Settings</a>
+        </div>
+      </div>
+    </section>
+
+    <div class="footer">AllenNetCamperHub • running on Raspberry Pi</div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Settings</title>
+  <link rel="stylesheet" href="/static/app.css">
+
+  <style>
+    .topnav{display:flex;gap:10px;justify-content:space-between;margin-bottom:12px}
+    .navlinks{display:flex;gap:10px;flex-wrap:wrap}
+    .navlink{padding:10px 14px;border-radius:999px;font-weight:900;text-decoration:none;background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25)}
+    .navlink.active{background:rgba(255,255,255,.25)}
+
+    label{display:block;font-weight:900;margin:12px 0 6px}
+    input{width:100%;padding:10px 12px;border-radius:14px;border:1px solid rgba(0,0,0,.18);font-weight:800}
+    .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .msg{margin-top:12px;padding:10px 12px;border-radius:14px;font-weight:900;background:rgba(255,255,255,.55)}
+    .msg.err{background:rgba(255,0,0,.10)}
+  </style>
+</head>
+
+<body class="bg">
+<div class="wrap">
+
+  <div class="topnav">
+    <div class="navlinks">
+      <a class="navlink" href="/">Home</a>
+      <a class="navlink" href="/wifi">WiFi</a>
+      <a class="navlink" href="/vehicle">Vehicle</a>
+      <a class="navlink" href="/power">Power</a>
+      <a class="navlink active" href="/settings">Settings</a>
+    </div>
+  </div>
+
+  <section class="hero">
+    <h1>Settings</h1>
+    <p>Configure VIN and Victron API connection.</p>
+
+    <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+      <span class="pill"><span id="statusText">Ready</span></span>
+      <button id="saveBtn" class="btn btn-primary">Save</button>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="card">
+      <div class="card-h"><h2>Configuration</h2></div>
+      <div class="card-b">
+
+        <label for="vin">VIN</label>
+        <input id="vin" placeholder="e.g. WV1..." />
+
+        <label for="vbase">Victron base URL</label>
+        <input id="vbase" placeholder="http://127.0.0.1:8000" />
+
+        <label for="vkey">Victron API key</label>
+        <input id="vkey" placeholder="(x-api-key header)" />
+
+        <label for="vname">Victron device name</label>
+        <input id="vname" placeholder="SmartSolar" />
+
+        <div class="row">
+          <button id="saveBtn2" class="btn btn-primary">Save</button>
+          <a class="btn btn-ghost" href="/vehicle">Go to Vehicle</a>
+          <a class="btn btn-ghost" href="/power">Go to Power</a>
+        </div>
+
+        <div id="msgWrap"></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => (s ?? "").toString().replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m]));
+function setMsg(text, kind){
+  const wrap = $("msgWrap");
+  if (!text) { wrap.innerHTML = ""; return; }
+  const cls = kind === "err" ? "msg err" : "msg";
+  wrap.innerHTML = `<div class="${cls}">${esc(text)}</div>`;
+}
+async function readJsonOrThrow(res){
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
+  if (ct.includes("application/json")){
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.detail || ("HTTP " + res.status));
+    return j;
+  }
+  const t = await res.text();
+  throw new Error(t || ("HTTP " + res.status));
+}
+async function api(url, opts){
+  const res = await fetch(url, opts);
+  return readJsonOrThrow(res);
+}
+
+async function load(){
+  try{
+    const s = await api("/api/settings");
+    $("vin").value = s.vin || "";
+    $("vbase").value = s.victron_base_url || "";
+    $("vkey").value = s.victron_api_key || "";
+    $("vname").value = s.victron_device_name || "";
+  }catch(e){
+    setMsg(e.message || String(e), "err");
+  }
+}
+
+async function save(){
+  $("statusText").textContent = "Saving…";
+  setMsg("", null);
+  try{
+    const body = {
+      vin: ($("vin").value || "").trim(),
+      victron_base_url: ($("vbase").value || "").trim() || null,
+      victron_api_key: ($("vkey").value || "").trim() || null,
+      victron_device_name: ($("vname").value || "").trim() || null,
+    };
+    if (!body.vin || body.vin.length < 8) throw new Error("VIN is required");
+    await api("/api/settings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    $("statusText").textContent = "Saved";
+    setMsg("Saved settings on the Pi.", null);
+  }catch(e){
+    $("statusText").textContent = "Error";
+    setMsg(e.message || String(e), "err");
+  }
+}
+
+$("saveBtn").addEventListener("click", save);
+$("saveBtn2").addEventListener("click", save);
+
+(async()=>{ await load(); })();
+</script>
+</body>
+</html>
