@@ -1,3 +1,6 @@
 fastapi
 uvicorn
 pydantic
+carconnectivity
+carconnectivity-cli
+carconnectivity-connector-volkswagen
