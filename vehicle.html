@@ -88,6 +88,14 @@ const $ = id => document.getElementById(id);
 const esc = s => (s ?? "").toString().replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m]));
 const pick = (...v)=>v.map(x=>x?.toString().trim()).find(x=>x && !["none","null"].includes(x.toLowerCase()))||"";
 
+// Extract value from objects that have a "value" or "raw" property, otherwise return as-is
+const val = x => {
+  if (!x || typeof x !== 'object') return x;
+  if ('value' in x) return x.value;
+  if ('raw' in x) return x.raw;
+  return x;
+};
+
 function kv(k,v){return `<div class="kv"><div class="k">${esc(k)}</div><div class="v">${esc(v ?? "—")}</div></div>`}
 
 function setMsg(text, kind){
@@ -133,15 +141,15 @@ function renderFromPayload(payload){
   if (vin) $("vinBadge").textContent = vin;
 
   let html = "";
-  html += kv("Name", summary.data?.name);
-  html += kv("Model", summary.data?.model);
-  html += kv("Odometer", summary.data?.odometer);
+  html += kv("Name", val(summary.data?.name));
+  html += kv("Model", val(summary.data?.model));
+  html += kv("Odometer", val(summary.data?.odometer));
   html += kv("Drive level", extras.drive_level ?? "—");
   html += kv("Total range", extras.total_range ?? "—");
   $("summaryArea").innerHTML = html;
 
-  const lat = pick(summary.coords?.latitude, summary.data?.addr_lat, summary.data?.pos_lat);
-  const lon = pick(summary.coords?.longitude, summary.data?.addr_lon, summary.data?.pos_lon);
+  const lat = pick(val(summary.coords?.latitude), val(summary.data?.addr_lat), val(summary.data?.pos_lat));
+  const lon = pick(val(summary.coords?.longitude), val(summary.data?.addr_lon), val(summary.data?.pos_lon));
   setMap(lat, lon);
 
   const a = summary.address || {};

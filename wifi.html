@@ -17,6 +17,44 @@
     .v{font-weight:800;word-break:break-word}
     .msg{margin-top:12px;padding:10px 12px;border-radius:14px;font-weight:900;background:rgba(255,255,255,.55)}
     .msg.err{background:rgba(255,0,0,.10)}
+    .msg.success{background:rgba(0,255,0,.10)}
+    
+    /* WiFi network list styling */
+    .network-list{display:flex;flex-direction:column;gap:8px}
+    .network-item{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:rgba(255,255,255,.65);border-radius:12px;border:1px solid rgba(0,0,0,.08);transition:all 0.2s ease}
+    .network-item:hover{background:rgba(255,255,255,.85);border-color:rgba(0,0,0,.15);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.1)}
+    .network-info{flex:1;min-width:0}
+    .network-ssid{font-weight:900;font-size:16px;margin-bottom:4px;color:#1a0f10}
+    .network-details{font-size:13px;font-weight:700;color:rgba(26,15,16,.6)}
+    .network-signal{display:inline-block;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:900;margin-left:8px}
+    .network-signal.strong{background:rgba(0,200,0,.2);color:#006400}
+    .network-signal.medium{background:rgba(255,165,0,.2);color:#cc5200}
+    .network-signal.weak{background:rgba(255,0,0,.2);color:#cc0000}
+    .network-security{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+    .security-badge{display:inline-block;padding:3px 8px;border-radius:6px;background:rgba(26,15,16,.08);color:rgba(26,15,16,.85);font-size:11px;font-weight:900;border:1px solid rgba(26,15,16,.12)}
+    .network-actions{display:flex;gap:8px;align-items:center}
+    .mini-connect-btn{padding:8px 14px;border-radius:8px;border:1px solid rgba(196,0,18,.4);background:linear-gradient(135deg,#c40012,#7d000a);color:rgba(255,255,255,.95);font-weight:900;font-size:13px;cursor:pointer;transition:all 0.2s ease;box-shadow:0 2px 8px rgba(196,0,18,.3)}
+    .mini-connect-btn:hover{background:linear-gradient(135deg,#d81020,#8d001a);transform:translateY(-1px);box-shadow:0 4px 12px rgba(196,0,18,.4)}
+    .mini-connect-btn:active{transform:translateY(0)}
+    .mini-connect-btn:disabled{opacity:0.5;cursor:not-allowed}
+    
+    /* Saved network badge */
+    .saved-badge{padding:4px 10px;border-radius:6px;background:rgba(26,15,16,.08);color:rgba(26,15,16,.85);font-size:12px;font-weight:900;border:1px solid rgba(26,15,16,.10)}
+    
+    /* Modal styles */
+    .modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center}
+    .modal.show{display:flex}
+    .modal-content{background:#fff;border-radius:18px;padding:24px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+    .modal-header{font-size:20px;font-weight:900;margin-bottom:16px;color:#1a0f10}
+    .modal-body{margin-bottom:20px}
+    .modal-input{width:100%;padding:12px;border:2px solid rgba(26,15,16,.15);border-radius:10px;font-size:14px;font-weight:700;margin-top:8px;box-sizing:border-box}
+    .modal-input:focus{outline:none;border-color:rgba(26,15,16,.4)}
+    .modal-footer{display:flex;gap:10px;justify-content:flex-end}
+    .modal-btn{padding:10px 20px;border-radius:10px;border:1px solid rgba(26,15,16,.18);font-weight:900;cursor:pointer;transition:all 0.2s ease}
+    .modal-btn-primary{background:rgba(26,15,16,.92);color:rgba(255,255,255,.95);border-color:rgba(26,15,16,.92)}
+    .modal-btn-primary:hover{background:rgba(26,15,16,.85);transform:translateY(-1px)}
+    .modal-btn-secondary{background:rgba(255,255,255,.65);color:rgba(26,15,16,.92);border:1px solid rgba(26,15,16,.18)}
+    .modal-btn-secondary:hover{background:rgba(255,255,255,.78)}
   </style>
 </head>
 
@@ -74,15 +112,99 @@
 
 </div>
 
+<!-- Connect Modal -->
+<div id="connectModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">Connect to <span id="modalSSID"></span></div>
+    <div class="modal-body">
+      <label for="passwordInput" style="font-weight:900;font-size:14px;display:block;margin-bottom:4px">Password</label>
+      <input type="password" id="passwordInput" class="modal-input" placeholder="Enter network password" />
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn modal-btn-secondary" onclick="closeConnectModal()">Cancel</button>
+      <button class="modal-btn modal-btn-primary" onclick="submitConnect()">Connect</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => (s ?? "").toString().replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m]));
 function kv(k,v){return `<div class="kv"><div class="k">${esc(k)}</div><div class="v">${esc(v ?? "—")}</div></div>`}
+
+let savedNetworksCache = [];
+let currentConnectSSID = null;
+
 function setMsg(text, kind){
   const wrap = $("msgWrap");
   if (!text) { wrap.innerHTML = ""; return; }
-  const cls = kind === "err" ? "msg err" : "msg";
+  const cls = kind === "err" ? "msg err" : kind === "success" ? "msg success" : "msg";
   wrap.innerHTML = `<div class="${cls}">${esc(text)}</div>`;
+}
+
+function getSignalClass(sig){
+  const s = parseInt(sig);
+  if (s >= -50) return 'strong';
+  if (s >= -70) return 'medium';
+  return 'weak';
+}
+
+function getSignalText(sig){
+  const s = parseInt(sig);
+  if (s >= -50) return 'Excellent';
+  if (s >= -70) return 'Good';
+  return 'Weak';
+}
+
+function parseFlags(flagsStr){
+  if (!flagsStr) return [];
+  // Match anything inside brackets like [WPA2-SAE-CCMP] or [ESS]
+  const matches = flagsStr.match(/\[([^\]]+)\]/g);
+  return matches ? matches.map(m => m.slice(1, -1)) : [];
+}
+
+function isSaved(ssid){
+  return savedNetworksCache.some(n => n.ssid === ssid);
+}
+
+function openConnectModal(ssid){
+  currentConnectSSID = ssid;
+  $("modalSSID").textContent = ssid;
+  $("passwordInput").value = "";
+  $("connectModal").classList.add("show");
+}
+
+function closeConnectModal(){
+  $("connectModal").classList.remove("show");
+  currentConnectSSID = null;
+}
+
+async function submitConnect(){
+  const password = $("passwordInput").value;
+  if (!currentConnectSSID) return;
+  
+  closeConnectModal();
+  $("statusText").textContent = "Connecting…";
+  setMsg("", null);
+  
+  try{
+    const result = await api("/api/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ssid: currentConnectSSID, password: password || null })
+    });
+    setMsg(result.message || "Connected successfully", "success");
+    $("statusText").textContent = "Connected";
+    
+    // Refresh status after connection attempt
+    setTimeout(async () => {
+      await refreshStatus();
+      await refreshSaved();
+    }, 3000);
+  }catch(e){
+    $("statusText").textContent = "Error";
+    setMsg("Connection failed: " + (e.message || String(e)), "err");
+  }
 }
 async function readJsonOrThrow(res){
   const ct = (res.headers.get("content-type") || "").toLowerCase();
@@ -121,14 +243,23 @@ async function refreshSaved(){
   try{
     const s = await api("/api/saved_networks");
     const nets = s.networks || [];
+    savedNetworksCache = nets;
+    
     if (!nets.length){
       $("savedArea").innerHTML = "<div class='meta'>No saved networks</div>";
       return;
     }
-    let html = "";
+    let html = "<div class='network-list'>";
     for (const n of nets){
-      html += kv(n.ssid || "—", "id " + (n.id ?? "—"));
+      html += `<div class='network-item'>`;
+      html += `<div class='network-info'>`;
+      html += `<div class='network-ssid'>${esc(n.ssid || "—")}</div>`;
+      html += `<div class='network-details'>Network ID: ${esc(n.id ?? "—")}</div>`;
+      html += `</div>`;
+      html += `<div class='saved-badge'>Saved</div>`;
+      html += `</div>`;
     }
+    html += "</div>";
     $("savedArea").innerHTML = html;
   }catch{
     $("savedArea").innerHTML = "<div class='meta'>Unable to read saved networks</div>";
@@ -146,10 +277,40 @@ async function scan(){
       $("statusText").textContent = "Ready";
       return;
     }
-    let html = "";
+    
+    let html = "<div class='network-list'>";
     for (const ap of aps){
-      html += kv(ap.ssid || "(hidden)", `sig ${ap.sig} • ${ap.flags || ""}`.trim());
+      const ssid = ap.ssid || "(hidden)";
+      const saved = isSaved(ssid);
+      const sigClass = getSignalClass(ap.sig);
+      const sigText = getSignalText(ap.sig);
+      const flags = parseFlags(ap.flags);
+      
+      html += `<div class='network-item'>`;
+      html += `<div class='network-info'>`;
+      html += `<div class='network-ssid'>${esc(ssid)}</div>`;
+      html += `<div class='network-details'>`;
+      html += `<span class='network-signal ${sigClass}'>${sigText} (${esc(ap.sig)} dBm)</span>`;
+      html += `</div>`;
+      if (flags.length > 0) {
+        html += `<div class='network-security'>`;
+        for (const flag of flags) {
+          html += `<span class='security-badge'>${esc(flag)}</span>`;
+        }
+        html += `</div>`;
+      }
+      html += `</div>`;
+      html += `<div class='network-actions'>`;
+      if (saved) {
+        html += `<div class='saved-badge'>Saved</div>`;
+      }
+      if (ssid !== "(hidden)") {
+        html += `<button class='mini-connect-btn' onclick='openConnectModal(${JSON.stringify(ssid)})'>Connect</button>`;
+      }
+      html += `</div>`;
+      html += `</div>`;
     }
+    html += "</div>";
     $("scanArea").innerHTML = html;
     $("statusText").textContent = "Ready";
   }catch(e){

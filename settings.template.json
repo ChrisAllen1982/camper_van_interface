@@ -1,0 +1,6 @@
+{
+  "vin": "<YOUR_VIN_HERE>",
+  "victron_base_url": "<YOUR_VICTRON_BASE_URL>",
+  "victron_api_key": "<YOUR_VICTRON_API_KEY>",
+  "victron_device_name": "<YOUR_DEVICE_NAME>"
+}

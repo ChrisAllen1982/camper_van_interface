@@ -7,6 +7,7 @@ import re
 import shlex
 import subprocess
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -51,11 +52,6 @@ VICTRON_DEVICE_NAME = os.getenv("VICTRON_DEVICE_NAME", "")
 VEHICLE_UPDATE_ENABLED = os.getenv("VEHICLE_UPDATE_ENABLED", "1") == "1"
 VEHICLE_UPDATE_INTERVAL_SEC = int(os.getenv("VEHICLE_UPDATE_INTERVAL_SEC", "300"))
 _vehicle_update_lock = asyncio.Lock()
-
-# -------------------- APP --------------------
-
-app = FastAPI()
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 logging.basicConfig(level=logging.INFO)
 
@@ -123,6 +119,19 @@ class SettingsModel(BaseModel):
     victron_base_url: Optional[str] = None
     victron_api_key: Optional[str] = None
     victron_device_name: Optional[str] = None
+
+
+# -------------------- APP --------------------
+
+# Use FastAPI lifespan event handler instead of deprecated on_event
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if VEHICLE_UPDATE_ENABLED:
+        asyncio.create_task(_vehicle_update_loop())
+    yield
+
+app = FastAPI(lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 
 # -------------------- PAGES --------------------
@@ -215,12 +224,15 @@ def vw_get(path: str = Query(..., min_length=3)):
 
 def _get_value(path: str) -> Any:
     """
-    Helper to unwrap common {"value": ...} responses.
+    Helper to unwrap common {"value": ...} or {"raw": ...} responses.
     """
     try:
         v = vw_get(path=path)
-        if isinstance(v, dict) and "value" in v:
-            return v.get("value")
+        if isinstance(v, dict):
+            if "value" in v:
+                return v.get("value")
+            if "raw" in v:
+                return v.get("raw")
         return v
     except Exception:
         return None
@@ -289,15 +301,15 @@ def vw_summary(vin: str = Query(..., min_length=8)):
 
     coords = {"latitude": lat, "longitude": lon}
 
-    # vehicle.html expects address.* (it can be empty)
+    # Get address from carconnectivity position_location
     address = {
-        "display_name": None,
-        "name": None,
-        "road": None,
-        "postcode": None,
-        "county": None,
-        "state": None,
-        "country": None,
+        "display_name": _get_value(f"{base}/position/position_location/display_name"),
+        "name": _get_value(f"{base}/position/position_location/name"),
+        "road": _get_value(f"{base}/position/position_location/road"),
+        "postcode": _get_value(f"{base}/position/position_location/postcode"),
+        "county": _get_value(f"{base}/position/position_location/county"),
+        "state": _get_value(f"{base}/position/position_location/state"),
+        "country": _get_value(f"{base}/position/position_location/country"),
     }
 
     return {"ok": True, "vin": vin, "data": data, "coords": coords, "address": address}
@@ -319,12 +331,14 @@ def vw_preload():
     total_range = None
     try:
         dl = vw_get(path=drive_level_path)
-        drive_level = dl.get("value") if isinstance(dl, dict) else None
+        if isinstance(dl, dict):
+            drive_level = dl.get("value") or dl.get("raw")
     except Exception:
         pass
     try:
         tr = vw_get(path=total_range_path)
-        total_range = tr.get("value") if isinstance(tr, dict) else None
+        if isinstance(tr, dict):
+            total_range = tr.get("value") or tr.get("raw")
     except Exception:
         pass
 
@@ -358,12 +372,6 @@ async def _vehicle_update_loop() -> None:
         except Exception:
             logging.exception("Vehicle update failed")
         await asyncio.sleep(VEHICLE_UPDATE_INTERVAL_SEC)
-
-
-@app.on_event("startup")
-async def _startup():
-    if VEHICLE_UPDATE_ENABLED:
-        asyncio.create_task(_vehicle_update_loop())
 
 
 # -------------------- VICTRON / POWER --------------------
@@ -531,6 +539,56 @@ def scan():
             bssid, freq, sig, flags, ssid = parts[:5]
             aps.append({"bssid": bssid, "freq": freq, "sig": sig, "flags": flags, "ssid": ssid})
     return {"aps": aps}
+
+
+class ConnectRequest(BaseModel):
+    ssid: str = Field(min_length=1)
+    password: Optional[str] = None
+
+
+@app.post("/api/connect")
+def connect_network(req: ConnectRequest):
+    """
+    Connect to a WiFi network. If the network is already saved, select it.
+    Otherwise, add it as a new network.
+    """
+    try:
+        # Check if network already exists
+        saved = saved_networks()
+        existing_id = None
+        for net in saved.get("networks", []):
+            if net.get("ssid") == req.ssid:
+                existing_id = net.get("id")
+                break
+        
+        if existing_id is not None:
+            # Network exists, select it
+            wpa(f"select_network {existing_id}")
+            wpa("reassociate")
+            return {"ok": True, "message": f"Connecting to existing network {req.ssid}"}
+        else:
+            # Add new network
+            add_result = wpa("add_network")
+            network_id = add_result.strip()
+            
+            # Set SSID
+            wpa(f'set_network {network_id} ssid \"{req.ssid}\"')
+            
+            # Set password or configure as open network
+            if req.password:
+                wpa(f'set_network {network_id} psk \"{req.password}\"')
+            else:
+                wpa(f"set_network {network_id} key_mgmt NONE")
+            
+            # Enable and select the network
+            wpa(f"enable_network {network_id}")
+            wpa(f"select_network {network_id}")
+            wpa("save_config")
+            wpa("reassociate")
+            
+            return {"ok": True, "message": f"Added and connecting to {req.ssid}", "network_id": network_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/captive_check")
